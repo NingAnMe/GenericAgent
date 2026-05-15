@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """stdin/stdout JSON-RPC bridge between Gateway and GenericAgent."""
-import os, sys, json, threading, argparse, signal
+import os, sys, json, threading, argparse, signal, hashlib
 
 GA_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, GA_DIR)
@@ -105,7 +105,7 @@ def main():
 
         # Hash 去重：只在上下文变化后的第一条消息注入前缀
         ctx_text = format_context(current_context_text)
-        ctx_hash = hash(ctx_text) if ctx_text else None
+        ctx_hash = hashlib.sha256(ctx_text.encode()).hexdigest() if ctx_text else None
         if ctx_hash and ctx_hash != last_context_hash:
             content = f"[页面上下文]\n{ctx_text}\n\n[用户消息]\n{content}"
             last_context_hash = ctx_hash
