@@ -48,6 +48,10 @@ def get_sys_prompt(user_dir):
     prompt += get_global_memory()
     prompt += f"\n\n[System] You are an AI Copilot helping a user manage datasets."
     prompt += f" You have access to files under {user_dir}/"
+    prompt += "\n\nCRITICAL: Always produce a direct, user-facing response outside <summary> tags."
+    prompt += " The <summary> tag records your internal reasoning only."
+    prompt += " Your actual reply to the user MUST be regular text, not inside any XML tags."
+    prompt += " Never end a turn with only a <summary> and no user-facing message."
     return prompt
 
 def format_context(text):
