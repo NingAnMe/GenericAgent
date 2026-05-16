@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """stdin/stdout JSON-RPC bridge between Gateway and GenericAgent."""
-import os, sys, json, threading, argparse, signal, hashlib
+import os, sys, json, re, threading, argparse, signal, hashlib
 
 GA_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, GA_DIR)
@@ -88,19 +88,23 @@ def main():
     os.makedirs(user_dir, exist_ok=True)
     temp_dir = os.path.join(user_dir, 'ga_temp')
     os.makedirs(temp_dir, exist_ok=True)
+    task_dir = os.path.join(temp_dir, 'task')
+    os.makedirs(task_dir, exist_ok=True)
 
     client = load_client()
     tools = load_tools()
     history = []
     last_context_hash = None
     current_context_text = ""
+    turn_count = 0
 
     def emit(msg):
         sys.stdout.write(json.dumps(msg, ensure_ascii=False) + '\n')
         sys.stdout.flush()
 
     def run_task(content):
-        nonlocal history, last_context_hash, current_context_text
+        nonlocal history, last_context_hash, current_context_text, turn_count
+        turn_count = 0
         sys_prompt = get_sys_prompt(user_dir)
 
         # Hash 去重：只在上下文变化后的第一条消息注入前缀
@@ -120,15 +124,25 @@ def main():
 
         try:
             for chunk in gen:
-                if not chunk: continue
-                if chunk.startswith('\n\n**Turn'):
-                    emit({'type': 'token', 'content': '\n'})
+                if not chunk:
                     continue
+
+                # 匹配非 verbose 形式：\n\nTurn N ...\n\n
+                m = re.match(r'\n\nTurn (\d+) \.\.\.\s*\n\n', chunk)
+                if m:
+                    turn_count = int(m.group(1))
+                    emit({'type': 'turn', 'number': turn_count})
+                    continue
+
+                # 兜底：verbose 形式（含 ** 加粗标记）
+                if chunk.startswith('\n\n**Turn'):
+                    continue
+
                 emit({'type': 'token', 'content': chunk})
         except Exception as e:
             emit({'type': 'error', 'message': str(e)})
         finally:
-            emit({'type': 'done'})
+            emit({'type': 'done', 'turns': turn_count})
 
     run_task("Hello — initialization complete. I'm ready to assist with dataset management.")
 
@@ -143,7 +157,7 @@ def main():
         if msg.get('type') == 'chat':
             run_task(msg['content'])
         elif msg.get('type') == 'abort':
-            emit({'type': 'done'})
+            emit({'type': 'done', 'turns': turn_count})
         elif msg.get('type') == 'context':
             current_context_text = msg.get('text', '')
 
